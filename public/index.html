@@ -38,13 +38,20 @@
     ::-webkit-scrollbar { width: 8px; height: 8px; }
     ::-webkit-scrollbar-thumb { background: rgba(120,120,140,.35); border-radius: 8px; }
     ::-webkit-scrollbar-thumb:hover { background: rgba(120,120,140,.6); }
-    .glass { backdrop-filter: blur(14px); background: rgba(255,255,255,.65); }
-    .dark .glass { background: rgba(20,20,28,.65); }
+    .glass { backdrop-filter: blur(14px); background: rgba(255,255,255,.75); }
+    .dark .glass { background: rgba(20,20,28,.75); }
     .gradient-text {
       background: linear-gradient(135deg,#6366f1 0%,#a855f7 50%,#ec4899 100%);
       -webkit-background-clip: text; background-clip: text; color: transparent;
     }
     .dropzone-active { border-color: #6366f1 !important; background: rgba(99,102,241,.08); }
+    .markdown-content p { margin-bottom: 0.5rem; }
+    .markdown-content p:last-child { margin-bottom: 0; }
+    .markdown-content ul { list-style-type: disc; padding-left: 1.25rem; margin-bottom: 0.5rem; }
+    .markdown-content ol { list-style-type: decimal; padding-left: 1.25rem; margin-bottom: 0.5rem; }
+    .markdown-content strong { font-weight: 600; color: #a5b4fc; }
+    .dark .markdown-content strong { color: #c7d2fe; }
+    .markdown-content code { background: rgba(0,0,0,0.15); padding: 0.15rem 0.35rem; border-radius: 0.25rem; font-family: monospace; font-size: 0.85em; }
   </style>
 </head>
 <body class="font-sans bg-slate-50 dark:bg-[#0a0a0f] text-slate-800 dark:text-slate-100 min-h-screen transition-colors">
@@ -72,15 +79,25 @@
         <div class="hidden md:flex items-center gap-2 px-3 py-2 rounded-xl bg-white/60 dark:bg-white/5 border border-slate-200/70 dark:border-white/10">
           <i data-lucide="search" class="w-4 h-4 text-slate-400"></i>
           <input id="searchInput" type="text" placeholder="Search documents..."
-            class="bg-transparent outline-none text-sm w-48 placeholder-slate-400" />
+            class="bg-transparent outline-none text-sm w-44 placeholder-slate-400" />
         </div>
+
+        <!-- AI Engine Status Badge / Button -->
+        <button id="openAiSettingsBtn" class="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200/70 dark:border-white/10 hover:border-brand-500/50 bg-white/50 dark:bg-white/5 text-xs font-semibold transition" title="Configure AI Model & Keys">
+          <span id="aiStatusDot" class="w-2 h-2 rounded-full bg-brand-500 animate-pulse"></span>
+          <span id="aiStatusText">Local AI</span>
+          <i data-lucide="sliders" class="w-3.5 h-3.5 text-slate-400"></i>
+        </button>
+
         <a href="/api-docs" target="_blank" class="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200/70 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/10 text-xs font-semibold text-slate-600 dark:text-slate-300 transition" title="Open API Documentation">
           <i data-lucide="book-open" class="w-4 h-4 text-brand-500"></i> API Docs
         </a>
+
         <button id="themeToggle" class="p-2.5 rounded-xl hover:bg-slate-200/60 dark:hover:bg-white/10 transition" title="Toggle theme">
           <i data-lucide="moon" class="w-5 h-5 dark:hidden"></i>
           <i data-lucide="sun" class="w-5 h-5 hidden dark:block"></i>
         </button>
+
         <button id="openUploadBtn"
           class="hidden sm:flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-br from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white text-sm font-medium shadow-lg shadow-brand-500/30 transition">
           <i data-lucide="upload" class="w-4 h-4"></i> Upload
@@ -90,7 +107,7 @@
   </header>
 
   <!-- ═════════ MAIN ═════════ -->
-  <main class="max-w-7xl mx-auto px-4 sm:px-6 py-6 grid grid-cols-1 lg:grid-cols-[1fr_420px] gap-6">
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 py-6 grid grid-cols-1 lg:grid-cols-[1fr_440px] gap-6">
 
     <!-- ══ LEFT: Documents ══ -->
     <section class="space-y-4">
@@ -111,9 +128,9 @@
         </div>
         <div class="rounded-2xl p-4 bg-white dark:bg-white/5 border border-slate-200/70 dark:border-white/10 shadow-sm">
           <div class="flex items-center gap-2 text-slate-500 dark:text-slate-400 text-xs font-medium">
-            <i data-lucide="sparkles" class="w-3.5 h-3.5"></i> AI Ready
+            <i data-lucide="sparkles" class="w-3.5 h-3.5"></i> AI Status
           </div>
-          <p class="text-2xl font-bold mt-1 gradient-text">Yes</p>
+          <p id="statAiStatus" class="text-lg font-bold mt-1 gradient-text truncate">Ready</p>
         </div>
       </div>
 
@@ -153,17 +170,20 @@
       <div class="rounded-2xl bg-white dark:bg-white/5 border border-slate-200/70 dark:border-white/10 shadow-xl overflow-hidden flex flex-col h-[calc(100vh-8rem)]">
 
         <!-- Chat header -->
-        <div class="px-5 py-4 border-b border-slate-200/70 dark:border-white/10 flex items-center gap-3">
-          <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-500 to-fuchsia-500 grid place-items-center">
+        <div class="px-5 py-3.5 border-b border-slate-200/70 dark:border-white/10 flex items-center gap-3">
+          <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-500 to-fuchsia-500 grid place-items-center shadow-sm">
             <i data-lucide="bot" class="w-5 h-5 text-white"></i>
           </div>
-          <div class="flex-1">
-            <h3 class="font-semibold text-sm">Ask Your Documents</h3>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2">
+              <h3 class="font-semibold text-sm">Ask Your Documents</h3>
+              <span id="chatEngineTag" class="text-[10px] px-2 py-0.5 rounded-full bg-brand-500/10 text-brand-600 dark:text-brand-300 font-medium">Local QA</span>
+            </div>
             <p class="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1">
-              <span class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span> Online
+              <span class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span> Context Grounded
             </p>
           </div>
-          <button id="clearChat" class="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/10 transition" title="Clear chat">
+          <button id="clearChat" class="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/10 transition text-slate-400 hover:text-slate-200" title="Clear chat">
             <i data-lucide="trash-2" class="w-4 h-4"></i>
           </button>
         </div>
@@ -171,17 +191,27 @@
         <!-- Messages -->
         <div id="chatMessages" class="flex-1 overflow-y-auto p-5 space-y-4"></div>
 
+        <!-- Suggested Prompt Chips -->
+        <div id="suggestedChips" class="px-4 py-2 flex flex-wrap gap-1.5 border-t border-slate-200/40 dark:border-white/5 bg-slate-50/50 dark:bg-black/10">
+          <button onclick="askSuggested('What is the leave and vacation policy?')" class="text-[11px] px-2.5 py-1 rounded-full bg-brand-500/10 hover:bg-brand-500/20 text-brand-600 dark:text-brand-300 border border-brand-500/20 transition">💡 Leave Policy?</button>
+          <button onclick="askSuggested('Summarize all the key information in the uploaded documents.')" class="text-[11px] px-2.5 py-1 rounded-full bg-brand-500/10 hover:bg-brand-500/20 text-brand-600 dark:text-brand-300 border border-brand-500/20 transition">💡 Summarize Docs</button>
+          <button onclick="askSuggested('What are the key onboarding steps for new employees?')" class="text-[11px] px-2.5 py-1 rounded-full bg-brand-500/10 hover:bg-brand-500/20 text-brand-600 dark:text-brand-300 border border-brand-500/20 transition">💡 Onboarding Guide</button>
+        </div>
+
         <!-- Input -->
-        <form id="chatForm" class="p-4 border-t border-slate-200/70 dark:border-white/10">
+        <form id="chatForm" class="p-3.5 border-t border-slate-200/70 dark:border-white/10">
           <div class="flex items-end gap-2 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200/70 dark:border-white/10 p-1.5 focus-within:border-brand-500 transition">
-            <textarea id="chatInput" rows="1" placeholder="Ask about leave policy, budgets..."
+            <textarea id="chatInput" rows="1" placeholder="Ask questions grounded in your documents..."
               class="flex-1 bg-transparent resize-none outline-none text-sm px-2 py-2 max-h-32 placeholder-slate-400"></textarea>
             <button type="submit" id="sendBtn"
               class="p-2.5 rounded-lg bg-gradient-to-br from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white shadow-md disabled:opacity-50 transition">
               <i data-lucide="send" class="w-4 h-4"></i>
             </button>
           </div>
-          <p class="text-[10px] text-slate-400 mt-2 text-center">Answers are grounded in your uploaded documents</p>
+          <div class="flex items-center justify-between text-[10px] text-slate-400 mt-2 px-1">
+            <span>Enter to send · Shift+Enter for new line</span>
+            <button type="button" onclick="$('openAiSettingsBtn').click()" class="text-brand-500 hover:underline">Change AI Model</button>
+          </div>
         </form>
       </div>
     </aside>
@@ -191,14 +221,14 @@
   <div id="toastContainer" class="fixed bottom-6 right-6 z-50 space-y-2"></div>
 
   <!-- ═════════ DELETE MODAL ═════════ -->
-  <div id="deleteModal" class="hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-sm grid place-items-center p-4">
-    <div class="bg-white dark:bg-[#14141c] rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-slide-up">
+  <div id="deleteModal" class="hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-sm grid place-items-center p-4">
+    <div class="bg-white dark:bg-[#14141c] rounded-2xl p-6 w-full max-w-sm shadow-2xl border border-slate-200 dark:border-white/10 animate-slide-up">
       <div class="w-12 h-12 rounded-full bg-red-500/10 grid place-items-center mb-4">
         <i data-lucide="alert-triangle" class="w-6 h-6 text-red-500"></i>
       </div>
       <h3 class="font-bold text-lg mb-1">Delete document?</h3>
       <p class="text-sm text-slate-500 dark:text-slate-400 mb-5">
-        <span id="deleteName" class="font-medium text-slate-700 dark:text-slate-200"></span> will be permanently removed.
+        <span id="deleteName" class="font-medium text-slate-700 dark:text-slate-200"></span> and its content will be permanently removed.
       </p>
       <div class="flex gap-2">
         <button id="cancelDelete" class="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 font-medium hover:bg-slate-50 dark:hover:bg-white/5 transition">Cancel</button>
@@ -207,19 +237,134 @@
     </div>
   </div>
 
+  <!-- ═════════ DOCUMENT VIEWER MODAL ═════════ -->
+  <div id="docViewerModal" class="hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-sm grid place-items-center p-4">
+    <div class="bg-white dark:bg-[#14141c] rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl border border-slate-200 dark:border-white/10 animate-slide-up overflow-hidden">
+      <!-- Header -->
+      <div class="p-5 border-b border-slate-200 dark:border-white/10 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div id="viewerIconBg" class="w-10 h-10 rounded-xl bg-brand-500/10 grid place-items-center">
+            <i id="viewerIcon" data-lucide="file-text" class="w-5 h-5 text-brand-500"></i>
+          </div>
+          <div>
+            <h3 id="viewerTitle" class="font-bold text-base truncate max-w-sm"></h3>
+            <p id="viewerMeta" class="text-xs text-slate-500 dark:text-slate-400 mt-0.5"></p>
+          </div>
+        </div>
+        <button id="closeViewerBtn" class="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-white/10 transition">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Content -->
+      <div class="flex-1 overflow-y-auto p-5 bg-slate-50/50 dark:bg-black/20 font-mono text-xs leading-relaxed whitespace-pre-wrap select-text border-b border-slate-200 dark:border-white/10" id="viewerContent"></div>
+
+      <!-- Actions Footer -->
+      <div class="p-4 bg-white dark:bg-[#14141c] flex items-center justify-between gap-3">
+        <button id="copyDocBtn" class="px-4 py-2 rounded-xl border border-slate-200 dark:border-white/10 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-white/5 transition flex items-center gap-1.5">
+          <i data-lucide="copy" class="w-3.5 h-3.5"></i> Copy Text
+        </button>
+        <button id="downloadModalDocBtn" class="px-4 py-2 rounded-xl bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white text-xs font-semibold shadow-md transition flex items-center gap-1.5">
+          <i data-lucide="download" class="w-3.5 h-3.5"></i> Download File
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═════════ AI SETTINGS MODAL ═════════ -->
+  <div id="aiSettingsModal" class="hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-sm grid place-items-center p-4">
+    <div class="bg-white dark:bg-[#14141c] rounded-2xl w-full max-w-md shadow-2xl border border-slate-200 dark:border-white/10 animate-slide-up p-6">
+      <div class="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-white/10">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl bg-brand-500/10 grid place-items-center">
+            <i data-lucide="sparkles" class="w-5 h-5 text-brand-500"></i>
+          </div>
+          <div>
+            <h3 class="font-bold text-base">AI Model & API Keys</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400">Configure your real LLM provider</p>
+          </div>
+        </div>
+        <button id="closeSettingsBtn" class="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-white/10 transition">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <div class="space-y-4 py-4">
+        <!-- Provider Selection -->
+        <div>
+          <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">AI Provider</label>
+          <div class="grid grid-cols-3 gap-2">
+            <button type="button" onclick="selectProvider('gemini')" id="provBtn-gemini"
+              class="provider-btn py-2.5 px-3 rounded-xl border border-brand-500 bg-brand-500/10 text-xs font-semibold text-center transition">
+              Google Gemini
+            </button>
+            <button type="button" onclick="selectProvider('openai')" id="provBtn-openai"
+              class="provider-btn py-2.5 px-3 rounded-xl border border-slate-200 dark:border-white/10 text-xs font-semibold text-center hover:bg-slate-100 dark:hover:bg-white/5 transition">
+              OpenAI
+            </button>
+            <button type="button" onclick="selectProvider('local')" id="provBtn-local"
+              class="provider-btn py-2.5 px-3 rounded-xl border border-slate-200 dark:border-white/10 text-xs font-semibold text-center hover:bg-slate-100 dark:hover:bg-white/5 transition">
+              Local (No Key)
+            </button>
+          </div>
+        </div>
+
+        <!-- API Key Input -->
+        <div id="apiKeySection">
+          <label id="apiKeyLabel" class="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
+            Gemini API Key
+          </label>
+          <div class="relative">
+            <input id="apiKeyInput" type="password" placeholder="Paste your API key here..."
+              class="w-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs outline-none focus:border-brand-500 transition font-mono pr-10" />
+            <button type="button" onclick="toggleKeyVisibility()" class="absolute right-3 top-2.5 text-slate-400 hover:text-slate-200">
+              <i id="keyEyeIcon" data-lucide="eye" class="w-4 h-4"></i>
+            </button>
+          </div>
+          <p class="text-[11px] text-slate-400 mt-1">Your key is stored securely in your browser and used only for requests.</p>
+        </div>
+
+        <!-- Model Selection -->
+        <div id="modelSection">
+          <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">Model</label>
+          <select id="modelSelect" class="w-full bg-slate-100 dark:bg-[#1a1a24] border border-slate-200 dark:border-white/10 rounded-xl px-3 py-2.5 text-xs outline-none focus:border-brand-500 transition"></select>
+        </div>
+      </div>
+
+      <div class="pt-3 border-t border-slate-200 dark:border-white/10 flex items-center gap-2">
+        <button id="testKeyBtn" class="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-white/10 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-white/5 transition flex items-center justify-center gap-1.5">
+          <i data-lucide="check" class="w-3.5 h-3.5 text-green-500"></i> Test Connection
+        </button>
+        <button id="saveSettingsBtn" class="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white text-xs font-semibold shadow-md transition">
+          Save Settings
+        </button>
+      </div>
+    </div>
+  </div>
+
 <script>
 /* ═════════════════════════════════════════════════════════════
    API LAYER (LIVE FULL-STACK CONNECTED)
    ═════════════════════════════════════════════════════════════ */
-// Dynamically resolve API base URL to seamlessly support localhost:4000 or same origin
 const API_BASE = window.location.origin && window.location.origin.startsWith('http')
   ? window.location.origin
   : 'http://localhost:4000';
+
+let aiSettings = {
+  provider: localStorage.getItem('docchat_ai_provider') || 'local',
+  apiKey: localStorage.getItem('docchat_ai_key') || '',
+  model: localStorage.getItem('docchat_ai_model') || 'gemini-1.5-flash'
+};
 
 const api = {
   async listDocuments() {
     const res = await fetch(`${API_BASE}/api/documents`);
     if (!res.ok) throw new Error('Failed to load documents');
+    return res.json();
+  },
+  async getDocument(id) {
+    const res = await fetch(`${API_BASE}/api/documents/${id}`);
+    if (!res.ok) throw new Error('Failed to fetch document');
     return res.json();
   },
   async uploadDocument(file) {
@@ -240,17 +385,34 @@ const api = {
     }
     return res.json();
   },
-  async askQuestion(question) {
+  async askQuestion(question, history = []) {
+    const payload = {
+      question,
+      provider: aiSettings.provider !== 'local' ? aiSettings.provider : null,
+      apiKey: aiSettings.provider !== 'local' ? aiSettings.apiKey : null,
+      model: aiSettings.model,
+      history
+    };
     const res = await fetch(`${API_BASE}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question })
+      body: JSON.stringify(payload)
     });
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
       throw new Error(errData.error || 'Chat failed');
     }
     return res.json();
+  },
+  async validateKey(provider, apiKey, model) {
+    const res = await fetch(`${API_BASE}/api/chat/validate-key`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider, apiKey, model })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error || 'Validation failed');
+    return data;
   }
 };
 
@@ -259,6 +421,8 @@ const api = {
    ═════════════════════════════════════════════════════════════ */
 let documents = [];
 let pendingDeleteId = null;
+let activeViewerDoc = null;
+let conversationHistory = [];
 
 const $ = (id) => document.getElementById(id);
 const fmtSize = (b) => {
@@ -331,20 +495,21 @@ function renderDocuments() {
   list.innerHTML = filtered.map((doc, i) => {
     const { icon, color, bg } = fileIcon(doc.originalName);
     return `
-      <div class="group rounded-2xl bg-white dark:bg-white/5 border border-slate-200/70 dark:border-white/10 p-4 flex items-center gap-4 hover:border-brand-500/40 hover:shadow-lg hover:shadow-brand-500/5 transition-all animate-slide-up"
-           style="animation-delay:${i * 30}ms">
+      <div class="group rounded-2xl bg-white dark:bg-white/5 border border-slate-200/70 dark:border-white/10 p-4 flex items-center gap-4 hover:border-brand-500/40 hover:shadow-lg hover:shadow-brand-500/5 transition-all animate-slide-up cursor-pointer"
+           onclick="openViewer('${doc._id}')"
+           style="animation-delay:${i * 25}ms">
         <div class="w-11 h-11 rounded-xl ${bg} grid place-items-center shrink-0">
           <i data-lucide="${icon}" class="w-5 h-5 ${color}"></i>
         </div>
         <div class="flex-1 min-w-0">
-          <p class="font-medium truncate">${escapeHtml(doc.originalName)}</p>
+          <p class="font-medium truncate hover:text-brand-500 transition-colors">${escapeHtml(doc.originalName)}</p>
           <p class="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2 mt-0.5">
             <span>${fmtSize(doc.size)}</span>
             <span class="w-1 h-1 rounded-full bg-slate-300 dark:bg-white/20"></span>
             <span>${fmtDate(doc.createdAt)}</span>
           </p>
         </div>
-        <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onclick="event.stopPropagation()">
           <button onclick="downloadDoc('${doc._id}')" class="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-white/10 transition" title="Download">
             <i data-lucide="download" class="w-4 h-4"></i>
           </button>
@@ -360,7 +525,6 @@ function renderDocuments() {
 window.downloadDoc = (id) => {
   const doc = documents.find(d => d._id === id);
   if (!doc) return;
-  // Trigger file download directly from server endpoint
   const downloadUrl = `${API_BASE}/api/documents/${id}/download`;
   const a = document.createElement('a');
   a.href = downloadUrl;
@@ -369,6 +533,36 @@ window.downloadDoc = (id) => {
   a.click();
   a.remove();
   toast(`Downloading ${doc.originalName}`, 'info');
+};
+
+window.openViewer = (id) => {
+  const doc = documents.find(d => d._id === id);
+  if (!doc) return;
+  activeViewerDoc = doc;
+  const { icon, color, bg } = fileIcon(doc.originalName);
+  
+  $('viewerTitle').textContent = doc.originalName;
+  const wordCount = (doc.text || '').trim().split(/\s+/).filter(Boolean).length;
+  $('viewerMeta').textContent = `${fmtSize(doc.size)} · ${wordCount} words · Uploaded ${fmtDate(doc.createdAt)}`;
+  $('viewerContent').textContent = doc.text || '(No text content extracted for this file)';
+  
+  const iconEl = $('viewerIcon');
+  iconEl.setAttribute('data-lucide', icon);
+  iconEl.className = `w-5 h-5 ${color}`;
+  $('viewerIconBg').className = `w-10 h-10 rounded-xl ${bg} grid place-items-center`;
+  
+  lucide.createIcons();
+  $('docViewerModal').classList.remove('hidden');
+};
+
+$('closeViewerBtn').onclick = () => $('docViewerModal').classList.add('hidden');
+$('copyDocBtn').onclick = () => {
+  if (!activeViewerDoc || !activeViewerDoc.text) return;
+  navigator.clipboard.writeText(activeViewerDoc.text);
+  toast('Document text copied to clipboard');
+};
+$('downloadModalDocBtn').onclick = () => {
+  if (activeViewerDoc) downloadDoc(activeViewerDoc._id);
 };
 
 window.promptDelete = (id) => {
@@ -419,7 +613,6 @@ async function handleFiles(files) {
   for (const file of valid) {
     try {
       const doc = await api.uploadDocument(file);
-      // Insert at beginning (newest first)
       documents.unshift(doc);
       renderDocuments();
       done++;
@@ -438,32 +631,70 @@ async function handleFiles(files) {
    ═════════════════════════════════════════════════════════════ */
 const chatMessages = $('chatMessages');
 
+function formatMarkdown(text) {
+  if (!text) return '';
+  let formatted = escapeHtml(text);
+  // Bold
+  formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  // Inline code
+  formatted = formatted.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // Lists
+  formatted = formatted.replace(/(?:^|\n)[•*-]\s+(.+)/g, '<li class="ml-4">$1</li>');
+  // Linebreaks
+  formatted = formatted.replace(/\n\n/g, '<br/><br/>').replace(/\n/g, '<br/>');
+  return `<div class="markdown-content">${formatted}</div>`;
+}
+
 function addMessage(role, content, sources = []) {
   const isUser = role === 'user';
   const el = document.createElement('div');
-  el.className = `flex gap-3 animate-slide-up ${isUser ? 'flex-row-reverse' : ''}`;
+  el.className = `flex gap-3 animate-slide-up group ${isUser ? 'flex-row-reverse' : ''}`;
+  
   const avatar = isUser
     ? `<div class="w-8 h-8 rounded-lg bg-slate-200 dark:bg-white/10 grid place-items-center shrink-0"><i data-lucide="user" class="w-4 h-4"></i></div>`
-    : `<div class="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-500 to-fuchsia-500 grid place-items-center shrink-0"><i data-lucide="bot" class="w-4 h-4 text-white"></i></div>`;
+    : `<div class="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-500 to-fuchsia-500 grid place-items-center shrink-0 shadow-sm"><i data-lucide="bot" class="w-4 h-4 text-white"></i></div>`;
+  
   const bubble = isUser
     ? `<div class="rounded-2xl rounded-tr-sm bg-brand-500 text-white px-4 py-2.5 text-sm max-w-[85%] whitespace-pre-wrap">${escapeHtml(content)}</div>`
-    : `<div class="rounded-2xl rounded-tl-sm bg-slate-100 dark:bg-white/5 border border-slate-200/70 dark:border-white/10 px-4 py-2.5 text-sm max-w-[85%] whitespace-pre-wrap">
-         ${escapeHtml(content)}
+    : `<div class="relative rounded-2xl rounded-tl-sm bg-slate-100 dark:bg-white/5 border border-slate-200/70 dark:border-white/10 px-4 py-2.5 text-sm max-w-[85%]">
+         ${formatMarkdown(content)}
          ${sources && sources.length ? `
            <div class="mt-3 pt-3 border-t border-slate-200 dark:border-white/10">
              <p class="text-[10px] uppercase tracking-wider text-slate-400 mb-1.5 font-semibold">Sources</p>
              <div class="flex flex-wrap gap-1.5">
-               ${sources.map(s => `<span class="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-md bg-brand-500/10 text-brand-600 dark:text-brand-300 font-medium">
+               ${sources.map(s => `<button onclick="openViewer('${s._id}')" class="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-md bg-brand-500/10 hover:bg-brand-500/20 text-brand-600 dark:text-brand-300 font-medium transition cursor-pointer">
                  <i data-lucide="file-text" class="w-3 h-3"></i>${escapeHtml(s.originalName)}
-               </span>`).join('')}
+               </button>`).join('')}
              </div>
            </div>` : ''}
+         <div class="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity">
+           <button onclick="copyText(this)" data-content="${escapeHtml(content)}" class="p-1 rounded hover:bg-slate-200 dark:hover:bg-white/10 text-slate-400 hover:text-slate-200" title="Copy answer">
+             <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+           </button>
+         </div>
        </div>`;
+       
   el.innerHTML = avatar + bubble;
   chatMessages.appendChild(el);
   lucide.createIcons();
   chatMessages.scrollTop = chatMessages.scrollHeight;
+
+  // Track conversation
+  conversationHistory.push({ role, content });
 }
+
+window.copyText = (btn) => {
+  const content = btn.getAttribute('data-content');
+  if (content) {
+    navigator.clipboard.writeText(content);
+    toast('Answer copied to clipboard');
+  }
+};
+
+window.askSuggested = (question) => {
+  $('chatInput').value = question;
+  $('chatForm').requestSubmit();
+};
 
 function addTyping() {
   const el = document.createElement('div');
@@ -504,7 +735,7 @@ $('chatForm').onsubmit = async (e) => {
   $('sendBtn').disabled = true;
   addTyping();
   try {
-    const { answer, sources } = await api.askQuestion(q);
+    const { answer, sources } = await api.askQuestion(q, conversationHistory);
     removeTyping();
     addMessage('assistant', answer, sources || []);
   } catch (err) {
@@ -515,13 +746,153 @@ $('chatForm').onsubmit = async (e) => {
   }
 };
 
-$('clearChat').onclick = () => { chatMessages.innerHTML = ''; initChat(); };
+$('clearChat').onclick = () => {
+  chatMessages.innerHTML = '';
+  conversationHistory = [];
+  initChat();
+};
 
 function initChat() {
+  const engineLabel = aiSettings.provider === 'gemini'
+    ? 'Google Gemini AI'
+    : aiSettings.provider === 'openai'
+    ? 'OpenAI ' + aiSettings.model
+    : 'Local QA Engine';
+
   addMessage('assistant',
-    "👋 Hi! I'm your document assistant.\n\nUpload some files and ask me anything — like \"What's the leave policy?\" or \"Summarize the notes.\"",
+    `👋 Hi! I'm your document assistant powered by **${engineLabel}**.\n\nUpload documents and ask me anything — like *"What's the leave policy?"* or *"Summarize the notes."*`,
     []);
 }
+
+/* ═════════════════════════════════════════════════════════════
+   AI SETTINGS MODAL & CONFIG
+   ═════════════════════════════════════════════════════════════ */
+const modelsByProvider = {
+  gemini: [
+    { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash (Fast & Recommended)' },
+    { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' },
+    { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro' }
+  ],
+  openai: [
+    { id: 'gpt-4o-mini', name: 'GPT-4o-mini (Fast & Recommended)' },
+    { id: 'gpt-4o', name: 'GPT-4o (Most capable)' },
+    { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo' }
+  ],
+  local: [
+    { id: 'local-extractive', name: 'Local Built-in QA (No Key Required)' }
+  ]
+};
+
+function updateAiStatusBadge() {
+  const prov = aiSettings.provider;
+  if (prov === 'gemini') {
+    $('aiStatusText').textContent = 'Gemini AI';
+    $('chatEngineTag').textContent = 'Gemini 1.5';
+    $('statAiStatus').textContent = 'Gemini Live';
+    $('aiStatusDot').className = 'w-2 h-2 rounded-full bg-green-500 animate-pulse';
+  } else if (prov === 'openai') {
+    $('aiStatusText').textContent = 'OpenAI';
+    $('chatEngineTag').textContent = aiSettings.model;
+    $('statAiStatus').textContent = 'OpenAI Live';
+    $('aiStatusDot').className = 'w-2 h-2 rounded-full bg-green-500 animate-pulse';
+  } else {
+    $('aiStatusText').textContent = 'Local AI';
+    $('chatEngineTag').textContent = 'Local QA';
+    $('statAiStatus').textContent = 'Local Ready';
+    $('aiStatusDot').className = 'w-2 h-2 rounded-full bg-brand-500 animate-pulse';
+  }
+}
+
+window.selectProvider = (provider) => {
+  aiSettings.provider = provider;
+  ['gemini', 'openai', 'local'].forEach(p => {
+    const btn = $(`provBtn-${p}`);
+    if (p === provider) {
+      btn.className = 'provider-btn py-2.5 px-3 rounded-xl border border-brand-500 bg-brand-500/10 text-xs font-semibold text-center transition';
+    } else {
+      btn.className = 'provider-btn py-2.5 px-3 rounded-xl border border-slate-200 dark:border-white/10 text-xs font-semibold text-center hover:bg-slate-100 dark:hover:bg-white/5 transition';
+    }
+  });
+
+  const keySec = $('apiKeySection');
+  const modSec = $('modelSection');
+  const label = $('apiKeyLabel');
+  const input = $('apiKeyInput');
+
+  if (provider === 'local') {
+    keySec.classList.add('hidden');
+    modSec.classList.add('hidden');
+  } else {
+    keySec.classList.remove('hidden');
+    modSec.classList.remove('hidden');
+    label.textContent = provider === 'gemini' ? 'Gemini API Key' : 'OpenAI API Key';
+    input.placeholder = provider === 'gemini' ? 'AIzaSy...' : 'sk-...';
+  }
+
+  // Populate model dropdown
+  const select = $('modelSelect');
+  select.innerHTML = (modelsByProvider[provider] || [])
+    .map(m => `<option value="${m.id}">${m.name}</option>`)
+    .join('');
+};
+
+$('openAiSettingsBtn').onclick = () => {
+  selectProvider(aiSettings.provider);
+  $('apiKeyInput').value = aiSettings.apiKey || '';
+  if (aiSettings.model) $('modelSelect').value = aiSettings.model;
+  $('aiSettingsModal').classList.remove('hidden');
+};
+
+$('closeSettingsBtn').onclick = () => $('aiSettingsModal').classList.add('hidden');
+
+window.toggleKeyVisibility = () => {
+  const input = $('apiKeyInput');
+  const icon = $('keyEyeIcon');
+  if (input.type === 'password') {
+    input.type = 'text';
+    icon.setAttribute('data-lucide', 'eye-off');
+  } else {
+    input.type = 'password';
+    icon.setAttribute('data-lucide', 'eye');
+  }
+  lucide.createIcons();
+};
+
+$('testKeyBtn').onclick = async () => {
+  const prov = aiSettings.provider;
+  if (prov === 'local') {
+    toast('Local engine does not require an API key', 'info');
+    return;
+  }
+  const key = $('apiKeyInput').value.trim();
+  if (!key) {
+    toast(`Please enter a valid ${prov.toUpperCase()} API key`, 'error');
+    return;
+  }
+  $('testKeyBtn').disabled = true;
+  $('testKeyBtn').textContent = 'Testing...';
+  try {
+    await api.validateKey(prov, key, $('modelSelect').value);
+    toast(`${prov.toUpperCase()} API Key is valid and connected!`, 'success');
+  } catch (err) {
+    toast(err.message, 'error');
+  } finally {
+    $('testKeyBtn').disabled = false;
+    $('testKeyBtn').innerHTML = `<i data-lucide="check" class="w-3.5 h-3.5 text-green-500"></i> Test Connection`;
+    lucide.createIcons();
+  }
+};
+
+$('saveSettingsBtn').onclick = () => {
+  aiSettings.apiKey = $('apiKeyInput').value.trim();
+  aiSettings.model = $('modelSelect').value;
+  localStorage.setItem('docchat_ai_provider', aiSettings.provider);
+  localStorage.setItem('docchat_ai_key', aiSettings.apiKey);
+  localStorage.setItem('docchat_ai_model', aiSettings.model);
+  updateAiStatusBadge();
+  $('aiSettingsModal').classList.add('hidden');
+  toast(`AI settings saved. Using ${aiSettings.provider.toUpperCase()}`);
+};
 
 /* ═════════════════════════════════════════════════════════════
    THEME + SEARCH + BOOT
@@ -536,10 +907,10 @@ $('searchInput').addEventListener('input', renderDocuments);
 
 (async function boot() {
   lucide.createIcons();
+  updateAiStatusBadge();
   initChat();
   try {
     documents = await api.listDocuments();
-    // If backend has no documents yet on initial load, seed with standard starter documents so the user can immediately test!
     if (documents.length === 0) {
       const demo = [
         { name: 'leave-policy.txt', content: 'Company Leave Policy\n\nAll full-time employees are entitled to 20 days of paid annual leave per calendar year. Sick leave is 10 days per year. Parental leave is 12 weeks fully paid. Leave requests must be submitted at least 2 weeks in advance through the HR portal.' },

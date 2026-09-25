@@ -27,159 +27,262 @@ function tokenize(text) {
 }
 
 /**
- * Searches and ranks documents based on keyword matching and overlap.
- * @param {Array} documents - List of document objects
- * @param {string} question - User question
- * @returns {Array} Scored and ranked documents
+ * Splits text into overlapping chunks for granular passage retrieval.
  */
-function rankDocuments(documents, question) {
+function chunkDocument(doc, chunkSize = 600, overlap = 100) {
+  const text = doc.text || '';
+  if (!text.trim()) return [];
+
+  // Split into paragraphs first
+  const paragraphs = text.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+  const chunks = [];
+
+  for (let i = 0; i < paragraphs.length; i++) {
+    const para = paragraphs[i];
+    if (para.length <= chunkSize) {
+      chunks.push({
+        docId: doc._id,
+        originalName: doc.originalName,
+        text: para
+      });
+    } else {
+      // Break large paragraph into chunk slices
+      let start = 0;
+      while (start < para.length) {
+        const slice = para.slice(start, start + chunkSize);
+        chunks.push({
+          docId: doc._id,
+          originalName: doc.originalName,
+          text: slice
+        });
+        start += chunkSize - overlap;
+      }
+    }
+  }
+
+  // Fallback if no paragraphs split
+  if (chunks.length === 0 && text.trim().length > 0) {
+    chunks.push({
+      docId: doc._id,
+      originalName: doc.originalName,
+      text: text.slice(0, chunkSize)
+    });
+  }
+
+  return chunks;
+}
+
+/**
+ * Searches and ranks document chunks based on BM25-style keyword overlap.
+ */
+function rankChunks(allDocuments, question) {
   const queryTokens = tokenize(question);
   const rawQuery = question.toLowerCase().trim();
 
-  if (queryTokens.length === 0 && rawQuery.length > 0) {
-    // If all words were stopwords, fallback to splitting raw query
-    const fallbackTokens = rawQuery.split(/\s+/).filter(Boolean);
-    queryTokens.push(...fallbackTokens);
-  }
+  const allChunks = [];
+  allDocuments.forEach((doc) => {
+    const docChunks = chunkDocument(doc);
+    allChunks.push(...docChunks);
+  });
 
-  const scoredDocs = documents.map((doc) => {
-    const title = (doc.originalName || '').toLowerCase();
-    const content = (doc.text || '').toLowerCase();
+  const scoredChunks = allChunks.map((chunk) => {
+    const title = (chunk.originalName || '').toLowerCase();
+    const content = (chunk.text || '').toLowerCase();
     let score = 0;
     const matchedTokens = new Set();
 
-    // Exact phrase match in document content or title gives high bonus
-    if (content.includes(rawQuery)) score += 15;
-    if (title.includes(rawQuery)) score += 20;
+    if (content.includes(rawQuery)) score += 20;
+    if (title.includes(rawQuery)) score += 15;
 
     queryTokens.forEach((token) => {
-      // Title match weight
       if (title.includes(token)) {
         score += 8;
         matchedTokens.add(token);
       }
-
-      // Content match
       if (content.includes(token)) {
         matchedTokens.add(token);
-        // Count occurrences (capped)
-        const regex = new RegExp(`\\b${token}\\b`, 'gi');
-        const matches = (content.match(regex) || []).length;
-        score += Math.min(matches, 5) * 2;
+        const matches = (content.match(new RegExp(`\\b${token}\\b`, 'gi')) || []).length;
+        score += Math.min(matches, 5) * 3;
       }
     });
 
-    // Coverage bonus: ratio of query tokens present
     if (queryTokens.length > 0) {
       const coverage = matchedTokens.size / queryTokens.length;
-      score += coverage * 10;
+      score += coverage * 15;
     }
 
     return {
-      doc,
+      chunk,
       score,
       matchedTokens: Array.from(matchedTokens)
     };
   });
 
-  // Sort by score descending
-  return scoredDocs.sort((a, b) => b.score - a.score);
+  return scoredChunks.sort((a, b) => b.score - a.score);
 }
 
 /**
- * Extracts the most relevant sentences or paragraphs from a document for the question.
+ * Generate AI Answer using Google Gemini API
  */
-function extractRelevantSnippets(text, question, maxSentences = 3) {
-  if (!text) return '';
-  const tokens = tokenize(question);
-  // Split into sentences / paragraphs
-  const units = text
-    .split(/(?<=[.?!])\s+|\n{2,}/)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 15);
+async function callGeminiAPI(apiKey, model, question, context, history = []) {
+  const chosenModel = model || 'gemini-1.5-flash';
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${chosenModel}:generateContent?key=${apiKey}`;
 
-  if (units.length === 0) return text.slice(0, 300);
+  const systemInstruction = `You are DocChat, an intelligent, professional AI document assistant.
+Your goal is to answer the user's question accurately and helpfully based strictly on the provided Document Context.
+If the answer cannot be determined from the documents, clearly explain that the information is not present in the uploaded files.
+Always format your response with clean Markdown (use bullet points, bold headers, and concise summaries where applicable).
+Do not hallucinate facts outside the provided documents.`;
 
-  const scoredUnits = units.map((unit) => {
-    const lower = unit.toLowerCase();
-    let unitScore = 0;
-    tokens.forEach((t) => {
-      if (lower.includes(t)) unitScore += 1;
+  const contents = [];
+
+  // Add previous conversational context if provided
+  if (Array.isArray(history) && history.length > 0) {
+    history.slice(-6).forEach((h) => {
+      contents.push({
+        role: h.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: h.content }]
+      });
     });
-    return { unit, score: unitScore };
+  }
+
+  const promptText = `DOCUMENT CONTEXT:
+${context}
+
+USER QUESTION:
+${question}
+
+Please answer based on the context above.`;
+
+  contents.push({
+    role: 'user',
+    parts: [{ text: promptText }]
   });
 
-  scoredUnits.sort((a, b) => b.score - a.score);
-  const best = scoredUnits.filter((u) => u.score > 0).slice(0, maxSentences);
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents,
+      systemInstruction: {
+        parts: [{ text: systemInstruction }]
+      },
+      generationConfig: {
+        temperature: 0.2,
+        maxOutputTokens: 1200
+      }
+    })
+  });
 
-  if (best.length === 0) {
-    return units.slice(0, maxSentences).join(' ');
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({}));
+    throw new Error(errBody.error?.message || `Gemini API error (${res.status})`);
   }
 
-  return best.map((b) => b.unit).join(' ');
+  const data = await res.json();
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error('No response text returned by Gemini API');
+  return text.trim();
 }
 
 /**
- * Generates an answer using an external LLM if configured, or a local extractive QA fallback.
+ * Generate AI Answer using OpenAI API
  */
-async function generateAnswer(question, relevantDocs) {
-  // If OpenAI API Key is configured
-  if (process.env.OPENAI_API_KEY) {
-    try {
-      const context = relevantDocs
-        .map((r) => `Document "${r.doc.originalName}":\n${r.doc.text.slice(0, 3000)}`)
-        .join('\n\n---\n\n');
+async function callOpenAIAPI(apiKey, model, question, context, history = []) {
+  const chosenModel = model || 'gpt-4o-mini';
+  const url = 'https://api.openai.com/v1/chat/completions';
 
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
-        },
-        body: JSON.stringify({
-          model: process.env.OPENAI_MODEL || 'gpt-3.5-turbo',
-          messages: [
-            {
-              role: 'system',
-              content:
-                'You are DocChat, an intelligent AI document assistant. Answer the user question based strictly on the provided documents. If the answer cannot be determined from the documents, say so clearly.'
-            },
-            {
-              role: 'user',
-              content: `Documents Context:\n${context}\n\nQuestion: ${question}`
-            }
-          ],
-          temperature: 0.2
-        })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const content = data.choices?.[0]?.message?.content;
-        if (content) return content.trim();
-      }
-    } catch (err) {
-      console.warn('OpenAI API request failed, falling back to local extractor:', err.message);
+  const messages = [
+    {
+      role: 'system',
+      content:
+        'You are DocChat, an intelligent AI document assistant. Answer the user question based strictly on the provided documents. Format with clean Markdown and cite the document names.'
     }
+  ];
+
+  if (Array.isArray(history) && history.length > 0) {
+    history.slice(-6).forEach((h) => {
+      messages.push({
+        role: h.role === 'assistant' ? 'assistant' : 'user',
+        content: h.content
+      });
+    });
   }
 
-  // Local extractive fallback QA
-  const top = relevantDocs[0];
-  const primaryDoc = top.doc;
-  const snippet = extractRelevantSnippets(primaryDoc.text, question, 3);
+  messages.push({
+    role: 'user',
+    content: `DOCUMENT CONTEXT:\n${context}\n\nQUESTION: ${question}`
+  });
 
-  if (!snippet || snippet.trim().length === 0) {
-    return `Based on "${primaryDoc.originalName}", no specific text matching "${question}" was extracted, but the document is stored and available.`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model: chosenModel,
+      messages,
+      temperature: 0.2
+    })
+  });
+
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({}));
+    throw new Error(errBody.error?.message || `OpenAI API error (${res.status})`);
   }
 
-  const cleanSnippet = snippet.replace(/\s+/g, ' ').trim();
-  return `Based on ${primaryDoc.originalName}:\n\n"${cleanSnippet}"`;
+  const data = await res.json();
+  const text = data.choices?.[0]?.message?.content;
+  if (!text) throw new Error('No response text returned by OpenAI API');
+  return text.trim();
+}
+
+/**
+ * Local extractive QA synthesizer when no API key is provided
+ */
+function localSynthesize(question, topChunks) {
+  const primary = topChunks[0];
+  const matchedDocs = [...new Set(topChunks.map((c) => c.chunk.originalName))];
+
+  const passages = topChunks
+    .slice(0, 3)
+    .map((c) => `• [${c.chunk.originalName}]: "${c.chunk.text.trim()}"`)
+    .join('\n\n');
+
+  return `Based on ${matchedDocs.join(', ')}:\n\n${passages}\n\n*(Note: Running in local engine mode. Add your Gemini or OpenAI API key in Settings to enable generative LLM synthesis.)*`;
+}
+
+/**
+ * Validates an API key by calling the provider's models list or lightweight query
+ */
+async function validateApiKey(provider, apiKey, model) {
+  if (provider === 'gemini') {
+    const testUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
+    const res = await fetch(testUrl);
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
+      throw new Error(errBody.error?.message || 'Invalid Gemini API key');
+    }
+    return { valid: true, provider: 'gemini' };
+  } else if (provider === 'openai') {
+    const testUrl = 'https://api.openai.com/v1/models';
+    const res = await fetch(testUrl, {
+      headers: { Authorization: `Bearer ${apiKey}` }
+    });
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
+      throw new Error(errBody.error?.message || 'Invalid OpenAI API key');
+    }
+    return { valid: true, provider: 'openai' };
+  }
+  throw new Error(`Unsupported provider: ${provider}`);
 }
 
 /**
  * Main Question Answering handler
  */
-async function answerQuestion(question, allDocuments) {
+async function answerQuestion(question, allDocuments, options = {}) {
   if (!question || typeof question !== 'string' || !question.trim()) {
     const error = new Error('Question cannot be empty');
     error.statusCode = 400;
@@ -193,8 +296,9 @@ async function answerQuestion(question, allDocuments) {
     };
   }
 
-  const ranked = rankDocuments(allDocuments, question);
-  const relevant = ranked.filter((r) => r.score > 0).slice(0, 3);
+  // Rank relevant passages across documents
+  const ranked = rankChunks(allDocuments, question);
+  const relevant = ranked.filter((r) => r.score > 0).slice(0, 4);
 
   if (relevant.length === 0) {
     return {
@@ -203,12 +307,71 @@ async function answerQuestion(question, allDocuments) {
     };
   }
 
-  const sources = relevant.map((r) => ({
-    _id: r.doc._id,
-    originalName: r.doc.originalName
-  }));
+  // Deduplicate sources
+  const seenDocs = new Set();
+  const sources = [];
+  relevant.forEach((r) => {
+    if (!seenDocs.has(r.chunk.docId)) {
+      seenDocs.add(r.chunk.docId);
+      sources.push({
+        _id: r.chunk.docId,
+        originalName: r.chunk.originalName
+      });
+    }
+  });
 
-  const answer = await generateAnswer(question, relevant);
+  // Construct context block
+  const context = relevant
+    .map(
+      (r, idx) =>
+        `[Document ${idx + 1}: ${r.chunk.originalName}]\n${r.chunk.text}`
+    )
+    .join('\n\n---\n\n');
+
+  // Determine API key & provider
+  const apiKey =
+    options.apiKey ||
+    process.env.GEMINI_API_KEY ||
+    process.env.OPENAI_API_KEY;
+
+  const provider =
+    options.provider ||
+    (options.apiKey && options.provider) ||
+    (process.env.GEMINI_API_KEY ? 'gemini' : null) ||
+    (process.env.OPENAI_API_KEY ? 'openai' : null);
+
+  let answer = '';
+
+  if (apiKey && provider === 'gemini') {
+    try {
+      answer = await callGeminiAPI(
+        apiKey,
+        options.model || 'gemini-1.5-flash',
+        question,
+        context,
+        options.history
+      );
+    } catch (apiErr) {
+      console.warn('Gemini API call failed, using local fallback:', apiErr.message);
+      answer = localSynthesize(question, relevant) + `\n\n*(Gemini API Warning: ${apiErr.message})*`;
+    }
+  } else if (apiKey && provider === 'openai') {
+    try {
+      answer = await callOpenAIAPI(
+        apiKey,
+        options.model || 'gpt-4o-mini',
+        question,
+        context,
+        options.history
+      );
+    } catch (apiErr) {
+      console.warn('OpenAI API call failed, using local fallback:', apiErr.message);
+      answer = localSynthesize(question, relevant) + `\n\n*(OpenAI API Warning: ${apiErr.message})*`;
+    }
+  } else {
+    // Local extractive synthesizer
+    answer = localSynthesize(question, relevant);
+  }
 
   return {
     answer,
@@ -217,7 +380,9 @@ async function answerQuestion(question, allDocuments) {
 }
 
 module.exports = {
-  rankDocuments,
-  extractRelevantSnippets,
-  answerQuestion
+  tokenize,
+  chunkDocument,
+  rankChunks,
+  answerQuestion,
+  validateApiKey
 };

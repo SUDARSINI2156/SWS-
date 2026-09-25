@@ -105,6 +105,15 @@ describe('AI Chat & Question Answering API', () => {
       assert.ok(res.body.answer);
       assert.strictEqual(res.body.sources.length, 0);
     });
+
+    it('should validate API key requirements in /api/chat/validate-key', async () => {
+      const res = await request(app)
+        .post('/api/chat/validate-key')
+        .send({});
+
+      assert.strictEqual(res.status, 400);
+      assert.ok(res.body.error);
+    });
   });
 
   describe('OpenAPI Documentation Endpoint', () => {
