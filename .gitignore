@@ -1,0 +1,11 @@
+node_modules/
+uploads/*
+!uploads/.gitkeep
+data/*
+!data/.gitkeep
+.env
+*.log
+tests/test_fixtures/
+tests/test_chat_fixtures/
+.DS_Store
+Thumbs.db
